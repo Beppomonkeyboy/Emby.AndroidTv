@@ -100,7 +100,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="0dp"
                     android:layout_margin="2dp"
-                    android:background="@color/material_blue_grey_800" />
+                    android:background="@color/orange500transparent" />
             </LinearLayout>
         </FrameLayout>
 

@@ -1153,55 +1153,9 @@ public class VideoPlayerActivity extends BaseActivity implements IVideoPlayer, G
         }
     }
 
-    private static class ConfigureSurfaceHolder {
-        private final Surface surface;
-        private boolean configured;
-
-        private ConfigureSurfaceHolder(Surface surface) {
-            this.surface = surface;
-        }
-    }
-
     @Override
     public int configureSurface(Surface surface, final int width, final int height, final int hal) {
-        if (LibVlcUtil.isICSOrLater() || surface == null)
-            return -1;
-        if (width * height == 0)
-            return 0;
-        logger.Debug("configureSurface: " + width +"x"+height);
-
-        final ConfigureSurfaceHolder holder = new ConfigureSurfaceHolder(surface);
-
-        final Handler handler = new Handler(Looper.getMainLooper());
-        handler.post(new Runnable() {
-            @Override
-            public void run() {
-                if (mSurface == holder.surface && mSurfaceHolder != null) {
-                    if (hal != 0)
-                        mSurfaceHolder.setFormat(hal);
-                    mSurfaceHolder.setFixedSize(width, height);
-                } else if (mSubtitleSurface == holder.surface && mSubtitlesSurfaceHolder != null) {
-                    if (hal != 0)
-                        mSubtitlesSurfaceHolder.setFormat(hal);
-                    mSubtitlesSurfaceHolder.setFixedSize(width, height);
-                }
-
-                synchronized (holder) {
-                    holder.configured = true;
-                    holder.notifyAll();
-                }
-            }
-        });
-
-        try {
-            synchronized (holder) {
-                while (!holder.configured)
-                    holder.wait();
-            }
-        } catch (InterruptedException e) {
-            return 0;
-        }
-        return 1;
+        return -1;
     }
 
     /**
@@ -1834,6 +1788,7 @@ public class VideoPlayerActivity extends BaseActivity implements IVideoPlayer, G
         LayoutParams lp = surface.getLayoutParams();
         lp.width  = (int) Math.ceil(dw * mVideoWidth / mVideoVisibleWidth);
         lp.height = (int) Math.ceil(dh * mVideoHeight / mVideoVisibleHeight);
+        logger.Info("Surface set to w:%s h:%s",lp.width, lp.height);
         surface.setLayoutParams(lp);
         subtitlesSurface.setLayoutParams(lp);
 
