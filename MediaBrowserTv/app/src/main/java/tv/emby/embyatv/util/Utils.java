@@ -53,9 +53,13 @@ import mediabrowser.apiinteraction.EmptyResponse;
 import mediabrowser.apiinteraction.IConnectionManager;
 import mediabrowser.apiinteraction.Response;
 import mediabrowser.apiinteraction.android.GsonJsonSerializer;
+import mediabrowser.apiinteraction.android.profiles.AndroidProfile;
 import mediabrowser.apiinteraction.android.profiles.AndroidProfileOptions;
 import mediabrowser.model.apiclient.ServerInfo;
+import mediabrowser.model.dlna.PlaybackException;
 import mediabrowser.model.dlna.StreamInfo;
+import mediabrowser.model.dlna.SubtitleProfile;
+import mediabrowser.model.dlna.VideoOptions;
 import mediabrowser.model.dto.BaseItemDto;
 import mediabrowser.model.dto.BaseItemPerson;
 import mediabrowser.model.dto.ChapterInfoDto;
@@ -78,6 +82,7 @@ import mediabrowser.model.querying.ItemQuery;
 import mediabrowser.model.querying.ItemSortBy;
 import mediabrowser.model.querying.ItemsResult;
 import mediabrowser.model.session.PlaybackProgressInfo;
+import mediabrowser.model.session.PlaybackStartInfo;
 import mediabrowser.model.session.PlaybackStopInfo;
 import mediabrowser.model.users.AuthenticationResult;
 import tv.emby.embyatv.BuildConfig;
@@ -88,6 +93,7 @@ import tv.emby.embyatv.details.DetailsActivity;
 import tv.emby.embyatv.details.FullDetailsActivity;
 import tv.emby.embyatv.model.ChapterItemInfo;
 import tv.emby.embyatv.playback.PlaybackOverlayActivity;
+import tv.emby.embyatv.playback.vlc.VideoPlayerActivity;
 import tv.emby.embyatv.startup.DpadPwActivity;
 import tv.emby.embyatv.startup.LogonCredentials;
 import tv.emby.embyatv.startup.SelectUserActivity;
@@ -523,18 +529,84 @@ public class Utils {
     }
 
     public static void play(final BaseItemDto item, final int pos, final boolean shuffle, final Context activity) {
-        final DelayedMessage msg = new DelayedMessage(activity);
-        Utils.getItemsToPlay(item, pos == 0 && item.getType().equals("Movie"), shuffle, new Response<String[]>() {
+        VideoOptions options = new VideoOptions();
+        options.setDeviceId(TvApp.getApplication().getApiClient().getDeviceId());
+        options.setItemId(item.getId());
+        options.setMediaSources(item.getMediaSources());
+        options.setMaxBitrate(30000000);
+        final ApiClient apiClient = TvApp.getApplication().getApiClient();
+        TvApp.getApplication().setCurrentPlayingItem(item);
+
+        // Create our profile and clear out subtitles so that they will burn in
+        AndroidProfile profile = new AndroidProfile(Utils.getProfileOptions());
+        profile.setSubtitleProfiles(new SubtitleProfile[] {});
+        options.setProfile(profile);
+
+        TvApp.getApplication().getPlaybackManager().getVideoStreamInfo(apiClient.getServerInfo().getId(), options, false, apiClient, new Response<StreamInfo>() {
             @Override
-            public void onResponse(String[] response) {
-                Intent intent = new Intent(activity, PlaybackOverlayActivity.class);
-                intent.putExtra("Items", response);
-                intent.putExtra("Position", pos);
-                if (!(activity instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            public void onResponse(StreamInfo response) {
+                Long mbPos = (long) pos * 10000;
+                if (!"hls".equals(response.getSubProtocol())) {
+                    response.setStartPositionTicks(mbPos);
+                }
+
+                String path = response.ToUrl(apiClient.getApiUrl(), apiClient.getAccessToken()); //apiClient.getApiUrl()+"/videos/"+item.getId()+"?static=true&mediasourceid="+response.getMediaSourceId()+"&api_key="+apiClient.getAccessToken();
+                Intent intent = new Intent(activity, VideoPlayerActivity.class);
+                intent.setAction(VideoPlayerActivity.PLAY_FROM_VIDEOGRID);
+                intent.putExtra(VideoPlayerActivity.PLAY_EXTRA_ITEM_LOCATION, path);
+                intent.putExtra(VideoPlayerActivity.PLAY_EXTRA_ITEM_TITLE, item.getName());
+                //intent.putExtra(VideoPlayerActivity.PLAY_EXTRA_OPENED_POSITION, 0);
+//                intent.putExtra("mediaSourceJson", mediaSourceJson);
+//                intent.putExtra("playbackStartInfoJson", playbackStartInfoJson);
+                intent.putExtra("serverUrl", TvApp.getApplication().getApiClient().getApiUrl());
+                intent.putExtra("appName", "Emby");
+                intent.putExtra("appVersion", "");
+                intent.putExtra("deviceId", TvApp.getApplication().getApiClient().getDeviceId());
+                intent.putExtra("deviceName", TvApp.getApplication().getApiClient().getDevice().getDeviceName());
+                intent.putExtra("userId", TvApp.getApplication().getCurrentUser().getId());
+                intent.putExtra("accessToken", TvApp.getApplication().getApiClient().getAccessToken());
+
                 activity.startActivity(intent);
-                msg.Cancel();
+
+                PlaybackStartInfo startInfo = new PlaybackStartInfo();
+                startInfo.setItemId(item.getId());
+                startInfo.setPositionTicks(mbPos);
+                TvApp.getApplication().getPlaybackManager().reportPlaybackStart(startInfo, false, apiClient, new EmptyResponse());
+                //TvApp.getApplication().getLogger().Info("Playback of " + item.getName() + "(" + path + ") started.");
+            }
+
+            @Override
+            public void onError(Exception exception) {
+                if (exception instanceof PlaybackException) {
+                    PlaybackException ex = (PlaybackException) exception;
+                    switch (ex.getErrorCode()) {
+                        case NotAllowed:
+                            Utils.showToast(TvApp.getApplication(), TvApp.getApplication().getString(R.string.msg_playback_not_allowed));
+                            break;
+                        case NoCompatibleStream:
+                            Utils.showToast(TvApp.getApplication(), TvApp.getApplication().getString(R.string.msg_playback_incompatible));
+                            break;
+                        case RateLimitExceeded:
+                            Utils.showToast(TvApp.getApplication(), TvApp.getApplication().getString(R.string.msg_playback_restricted));
+                            break;
+                    }
+                }
             }
         });
+
+//        final DelayedMessage msg = new DelayedMessage(activity);
+//        Utils.getItemsToPlay(item, pos == 0 && item.getType().equals("Movie"), shuffle, new Response<String[]>() {
+//            @Override
+//            public void onResponse(String[] response) {
+//                Intent intent = new Intent(activity, PlaybackOverlayActivity.class);
+//                intent.putExtra("Items", response);
+//                intent.putExtra("Position", pos);
+//                if (!(activity instanceof Activity)) intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+//
+//                activity.startActivity(intent);
+//                msg.Cancel();
+//            }
+//        });
 
     }
 
