@@ -61,7 +61,7 @@ public class VlcVideoView extends SurfaceView implements IVideoView, IVideoPlaye
             mSurfaceView = this;
             mSurfaceHolder = getHolder();
             createPlayer();
-            
+
         }
     }
 
